@@ -1,0 +1,55 @@
+name: Deploy Backend to Railway
+
+on:
+  push:
+    branches:
+      - main
+      - '[0-9]+-B'
+      - '[0-9]+-B-*'
+      - 'Bugs-B'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Install Node.js dependencies
+        run: |
+          npm install
+
+      - name: Run Tests
+        id: run_tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test -- --passWithNoTests 2>&1 | tee /tmp/test_out.txt
+
+      - name: Deploy to Railway
+        id: deploy_railway
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service $RAILWAY_SERVICE_ID --detach 2>&1 | tee /tmp/deploy_out.txt
+
+      - name: Report CI Results
+        if: always()
+        env:
+          BOARD_ID: "6a8590914960943b6a810926"
+          API_URL: "https://skill-in-backend-dvdmgbe7fmhmg4hp.eastus2-01.azurewebsites.net"
+          GITHUB_BRANCH: ${{ github.ref_name }}
+          TEST_OUTCOME: ${{ steps.run_tests.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy_railway.outcome }}
+        run: |
+          python3 -c "import json,os,urllib.request as r; test_out=os.environ.get('TEST_OUTCOME','?'); deploy_out=os.environ.get('DEPLOY_OUTCOME','?'); status='NO_TESTS' if test_out in ('skipped','cancelled') else ('PASS' if test_out=='success' else 'FAIL'); test_log=open('/tmp/test_out.txt').read()[:1000] if os.path.exists('/tmp/test_out.txt') else ''; deploy_log=open('/tmp/deploy_out.txt').read()[:800] if os.path.exists('/tmp/deploy_out.txt') else ''; diag='[CI] tests='+test_out+' deploy='+deploy_out; final_output=(diag+chr(10)+test_log+chr(10)+deploy_log).strip(); body=json.dumps({'boardId':os.environ['BOARD_ID'],'devRole':'Backend','status':status,'output':final_output,'branch':os.environ.get('GITHUB_BRANCH','')}).encode(); req=r.Request(os.environ['API_URL']+'/api/Mentor/test-results',data=body,headers={'Content-Type':'application/json'}); r.urlopen(req,timeout=10)" || true
