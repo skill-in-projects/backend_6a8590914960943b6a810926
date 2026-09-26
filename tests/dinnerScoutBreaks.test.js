@@ -66,6 +66,14 @@ test('no_hard_rules drops openNow and the hours/vegetarian fields, and keeps the
     expect(answer.results.map((r) => r.placeId)).toContain('moon');
 });
 
+test('no_hard_rules also leaves hours and the vegetarian flag out of place details', async () => {
+    process.env.AGENT_BREAK = 'no_hard_rules';
+    const { executors, createSession } = require('../Agent/dinnerScout/tools');
+    googleFetch.mockResolvedValue(ok({ id: 'moon', displayName: { text: 'Moonflower' }, reviews: [] }));
+    await executors.get_place_details(createSession(), { placeId: 'moon' });
+    expect(googleFetch.mock.calls[0][2].headers['X-Goog-FieldMask']).not.toMatch(/currentOpeningHours|servesVegetarianFood/);
+});
+
 test('single_call never calls Gemini', async () => {
     process.env.AGENT_BREAK = 'single_call';
     scriptGoogle([]);

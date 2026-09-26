@@ -214,7 +214,11 @@ const executors = {
             return { error: `Detail limit reached (${MAX_DETAILS_CALLS} per request). Decide with what you have.` };
         session.detailsCalls++;
         const res = await googleFetch('places', '/v1/places/' + encodeURIComponent(placeId), {
-            headers: { 'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,currentOpeningHours,servesVegetarianFood,reviews' }
+            headers: {
+                'X-Goog-FieldMask': agentBreak() === 'no_hard_rules'
+                    ? 'id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,reviews'
+                    : 'id,displayName,formattedAddress,location,rating,userRatingCount,priceLevel,currentOpeningHours,servesVegetarianFood,reviews'
+            }
         });
         const body = await readJson(res, 'Place details');
         if (body?.error) return body;
