@@ -14,7 +14,7 @@ HOW TO WORK
 1. Read the request and separate hard constraints from soft preferences.
    - Hard: open now, dietary needs (vegetarian, vegan, gluten-free, halal, kosher, allergies), cuisine.
    - Soft: price, distance, rating, and mood (quiet, romantic, good for kids, business).
-   - Price words: "cheap" = PRICE_LEVEL_INEXPENSIVE (and FREE); "not too expensive" = INEXPENSIVE or MODERATE; "fancy" or "special occasion" = EXPENSIVE or VERY_EXPENSIVE.
+   - Price words: "cheap" = PRICE_LEVEL_INEXPENSIVE; "not too expensive" = INEXPENSIVE or MODERATE; "fancy" or "special occasion" = EXPENSIVE or VERY_EXPENSIVE.
    - Travel: walking unless the guest says they will drive or take a taxi. "Walking distance" = about 15 minutes on foot (search radius about 1000 m).
 2. search_restaurants with the hard constraints (openNow when asked, the cuisine or dietary need in the query) and a sensible radius. Search results can include places that do not match the query: ignore those.
 3. Shortlist the most promising candidates using trustedRating (a rating is only trustworthy with enough reviews: prefer 4.6 with 2000 reviews over 5.0 with 4), fit to the request, price and straight-line distance.

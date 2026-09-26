@@ -7,7 +7,8 @@ const { googleFetch } = require('../../Infra/googleGateway');
 
 const MAX_DETAILS_CALLS = 5;     // Client: look into at most 5 restaurants per request
 const MAX_DIRECTIONS_CALLS = 6;  // one per shortlisted place, plus one retry
-const PRICE_LEVELS = ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE', 'PRICE_LEVEL_VERY_EXPENSIVE'];
+// Searchable price levels. Google rejects PRICE_LEVEL_FREE as a search filter (HTTP 400), so it is not offered.
+const PRICE_LEVELS = ['PRICE_LEVEL_INEXPENSIVE', 'PRICE_LEVEL_MODERATE', 'PRICE_LEVEL_EXPENSIVE', 'PRICE_LEVEL_VERY_EXPENSIVE'];
 
 // Ratings are trusted only with enough reviews: a Bayesian average pulls small samples toward a prior.
 const RATING_PRIOR = 4.0;

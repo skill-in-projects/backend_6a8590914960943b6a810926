@@ -153,3 +153,17 @@ describe('agent loop', () => {
         expect(sent.toolConfig.functionCallingConfig.mode).toBe('ANY');
     });
 });
+
+describe('search price filter', () => {
+    const { executors } = require('../Agent/dinnerScout/tools');
+    beforeEach(() => googleFetch.mockReset());
+
+    test('never sends PRICE_LEVEL_FREE, which Google rejects', async () => {
+        googleFetch.mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ places: [] }) });
+        await executors.search_restaurants(createSession(), {
+            query: 'vegetarian', latitude: 1, longitude: 2, radiusMeters: 1000,
+            priceLevels: ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE']
+        });
+        expect(JSON.parse(googleFetch.mock.calls[0][2].body).priceLevels).toEqual(['PRICE_LEVEL_INEXPENSIVE']);
+    });
+});
