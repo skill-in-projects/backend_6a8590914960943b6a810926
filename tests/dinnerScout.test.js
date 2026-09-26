@@ -183,10 +183,16 @@ describe('submit corrections', () => {
         expect(reviewSubmit(session, { status: 'no_results' })).toBeNull();
     });
 
-    test('no_results after a doubled radius is accepted', () => {
+    test('no_results after searching 2000 m is accepted', () => {
         const session = createSession();
         session.searchRadii.push(400, 2000);
         expect(reviewSubmit(session, { status: 'no_results' })).toBeNull();
+    });
+
+    test('relaxing only to walking distance (400 m to 1000 m) is not enough', () => {
+        const session = createSession();
+        session.searchRadii.push(400, 1000);
+        expect(reviewSubmit(session, { status: 'no_results' })).toMatch(/at least 2000 m/);
     });
 
     test('fewer than 3 places is bounced once, then accepted', () => {

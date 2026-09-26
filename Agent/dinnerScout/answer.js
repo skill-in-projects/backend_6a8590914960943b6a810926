@@ -12,6 +12,8 @@ const STATUSES = ['ok', 'needs_clarification', 'no_results'];
 const RELAXABLE = ['distance', 'price', 'rating'];
 const MAX_RESULTS = 5;
 const MAX_WHY = 200;
+// Relaxing distance means going beyond walking distance (15 min, ~1000 m): the client's example is "within 25 minutes".
+const RELAXED_RADIUS_METERS = 2000;
 
 const travelMode = (submit) => (submit?.travelMode === 'driving' ? 'driving' : 'walking');
 
@@ -104,7 +106,7 @@ function assembleAnswer(session, submit, runId) {
 /**
  * A one-time correction for a submit_answer that breaks the client's rules in a way the model can still fix,
  * or null to accept it. Each correction is sent at most once, so the loop always ends.
- *   relax: no_results without ever widening the search (the client: relax distance first).
+ *   relax: no_results before searching beyond walking distance (the client: relax distance first, e.g. to 25 minutes).
  *   fill:  fewer than 3 places, while more may meet the hard constraints (the contract asks for 3 to 5).
  *          Not sent when the answer already reports a relaxation: then scarcity is evident and a short list is right.
  */
@@ -112,9 +114,9 @@ function reviewSubmit(session, submit) {
     // Gave up right after the fill bounce: accept, and the agent keeps the answer from before the bounce.
     if (session.beforeFill && submit?.status !== 'ok') return null;
     const radii = session.searchRadii;
-    if (submit?.status === 'no_results' && !session.nudges.has('relax') && radii.length > 0 && Math.max(...radii) < radii[0] * 2) {
+    if (submit?.status === 'no_results' && !session.nudges.has('relax') && radii.length > 0 && Math.max(...radii) < RELAXED_RADIUS_METERS) {
         session.nudges.add('relax');
-        return 'Not yet: relax distance before giving up. Search again with at least double the radius (then price, then rating), report the relaxation in "relaxed" and "message", and submit again.';
+        return `Not yet: relax distance before giving up. Search again with a radius of at least ${RELAXED_RADIUS_METERS} m (about 25 minutes on foot; then price, then rating), report the relaxation in "relaxed" and "message", and submit again.`;
     }
     const count = (submit?.results || []).length;
     const relaxed = (submit?.relaxed || []).length > 0;
