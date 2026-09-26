@@ -103,17 +103,22 @@ function assembleAnswer(session, submit, runId) {
  * or null to accept it. Each correction is sent at most once, so the loop always ends.
  *   relax: no_results without ever widening the search (the client: relax distance first).
  *   fill:  fewer than 3 places, while more may meet the hard constraints (the contract asks for 3 to 5).
+ *          Not sent when the answer already reports a relaxation: then scarcity is evident and a short list is right.
  */
 function reviewSubmit(session, submit) {
+    // Gave up right after the fill bounce: accept, and the agent keeps the answer from before the bounce.
+    if (session.beforeFill && submit?.status !== 'ok') return null;
     const radii = session.searchRadii;
     if (submit?.status === 'no_results' && !session.nudges.has('relax') && radii.length > 0 && Math.max(...radii) < radii[0] * 2) {
         session.nudges.add('relax');
         return 'Not yet: relax distance before giving up. Search again with at least double the radius (then price, then rating), report the relaxation in "relaxed" and "message", and submit again.';
     }
     const count = (submit?.results || []).length;
-    if (submit?.status === 'ok' && count > 0 && count < 3 && !session.nudges.has('fill')) {
+    const relaxed = (submit?.relaxed || []).length > 0;
+    if (submit?.status === 'ok' && count > 0 && count < 3 && !relaxed && !session.nudges.has('fill')) {
         session.nudges.add('fill');
-        return `You listed ${count} place(s). The contract asks for 3 to 5 whenever that many meet the hard constraints (open now, dietary, cuisine). Mood only ranks places, it never excludes them. Add the next best places that meet the hard constraints, with their travel times, or submit again unchanged if no others qualify.`;
+        session.beforeFill = submit;
+        return `You listed ${count} place(s). The contract asks for 3 to 5 whenever that many meet the hard constraints (open now, dietary, cuisine). Mood only ranks places, it never excludes them. Add the next best places that meet the hard constraints, with their travel times. If no other place meets them, call submit_answer again with exactly the same answer (status ok, same places).`;
     }
     return null;
 }

@@ -225,3 +225,34 @@ describe('submit corrections', () => {
         expect(answer.trace.join('\n')).toMatch(/Asked the model to revise/);
     });
 });
+
+describe('corrections never make an answer worse', () => {
+    const { reviewSubmit } = require('../Agent/dinnerScout/answer');
+    const ok = (body) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
+    const modelTurn = (...calls) => ok({ candidates: [{ content: { role: 'model', parts: calls.map((c) => ({ functionCall: c })) } }] });
+    beforeEach(() => googleFetch.mockReset());
+
+    test('a short list that reports a relaxation is not bounced', () => {
+        expect(reviewSubmit(createSession(), { status: 'ok', results: [{ placeId: 'nile' }], relaxed: [{ constraint: 'distance', from: 'a', to: 'b' }] })).toBeNull();
+    });
+
+    test('if the model gives up after the fill bounce, its earlier answer is kept', async () => {
+        const gemini = [
+            modelTurn({ name: 'search_restaurants', args: { query: 'vegetarian', latitude: 1, longitude: 2, radiusMeters: 1000 } }),
+            modelTurn({ name: 'submit_answer', args: { status: 'ok', message: 'One pick.', results: [{ placeId: 'green', why: 'Calm.' }] } }),
+            modelTurn({ name: 'submit_answer', args: { status: 'no_results', message: 'Nothing fits.' } })
+        ];
+        googleFetch.mockImplementation(async (service, path) => {
+            if (service === 'gemini') return gemini.shift();
+            if (path === '/v1/places:searchText') return ok({ places: [{ id: 'green', displayName: { text: 'Green Table' } }] });
+            if (path.startsWith('/maps/api/directions')) return ok({ status: 'OK', routes: [{ legs: [{ duration: { value: 480 }, distance: { value: 640 } }] }] });
+            throw new Error('unexpected call ' + service + path);
+        });
+
+        const answer = await runDinnerScout({ request: 'vegetarian near me', position: { lat: 1, lng: 2 }, runId: 'r' });
+
+        expect(answer.status).toBe('ok');
+        expect(answer.results.map((r) => r.placeId)).toEqual(['green']);
+        expect(answer.trace.join('\n')).toMatch(/Kept the earlier answer/);
+    });
+});

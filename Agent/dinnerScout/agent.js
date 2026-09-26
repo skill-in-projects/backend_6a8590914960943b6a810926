@@ -43,7 +43,11 @@ async function runTool(session, call) {
     }
 }
 
-async function finish(session, submit, runId, position) {
+async function finish(session, submitted, runId, position) {
+    // A correction must never turn a real answer into a worse one: if the model gave up after the
+    // "fewer than 3" bounce, keep the answer it gave before the bounce.
+    const submit = session.beforeFill && submitted.status !== 'ok' ? session.beforeFill : submitted;
+    if (submit !== submitted) session.trace.push('Kept the earlier answer: the revision gave up instead of adding places');
     // Every recommended place needs a real travel time; look up any the model skipped.
     const origin = position || session.origin;
     if (submit.status === 'ok' && origin) {
