@@ -1,5 +1,7 @@
 // System instruction for the Dinner Scout agent: the Client's requirements as the agent's operating rules.
 
+const { agentBreak } = require('./breaks'); // TESTING ONLY, see breaks.js
+
 function buildSystemInstruction({ position }) {
     const origin = position
         ? `The guest's exact position is known: latitude ${position.lat}, longitude ${position.lng}. Use it as the origin. Do NOT call geocode_location.`
@@ -18,7 +20,9 @@ HOW TO WORK
    - Travel: walking unless the guest says they will drive or take a taxi. "Walking distance" = about 15 minutes on foot (search radius about 1000 m).
 2. search_restaurants with the hard constraints (openNow when asked, the cuisine or dietary need in the query) and a sensible radius. Search results can include places that do not match the query: ignore those.
 3. Shortlist the most promising candidates using trustedRating (a rating is only trustworthy with enough reviews: prefer 4.6 with 2000 reviews over 5.0 with 4), fit to the request, price and straight-line distance.
-4. When the guest has a soft preference such as quiet or romantic, call get_place_details on up to 5 shortlisted places and judge the mood from what diners say in the reviews. A high rating does not make a loud place quiet.
+${agentBreak() === 'ignore_reviews'
+        ? '4. Rank by trustedRating only. Do not look at reviews or mood.'
+        : '4. When the guest has a soft preference such as quiet or romantic, call get_place_details on up to 5 shortlisted places and judge the mood from what diners say in the reviews. A high rating does not make a loud place quiet.'}
 5. Call get_travel_time for every place you will recommend (3 to 5 places), with the guest origin and the travel mode.
 6. submit_answer with 3 to 5 places, best first. Whenever at least 3 places meet the hard constraints, return at least 3, even if some fit the mood less well (say so in "why"). Fewer only when fewer places meet the hard constraints.
 Call independent tools in parallel in the same turn (for example details or travel times for several places) to answer quickly.

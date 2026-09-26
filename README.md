@@ -32,6 +32,7 @@ Every request to this backend gets a run id: send your own in the **X-Run-Id** h
 - `Agent/dinnerScout/answer.js`: the final answer. Only places Google returned in this request, facts copied from Google, no closed place when "open now" was asked, dietary needs never relaxed, travel minutes only from Directions.
 - `Agent/dinnerScout/prompt.js`: the rules from the client, as the agent's system instruction.
 - `AGENT_THINKING_BUDGET` (optional, default 0): Gemini thinking tokens per turn.
+- `AGENT_BREAK` (**testing only**, grader calibration): makes the agent misbehave in one deliberate way so the grader can be shown to catch it. See `Agent/dinnerScout/breaks.js`. Leave it unset.
 
 ## Recommended Tools
 

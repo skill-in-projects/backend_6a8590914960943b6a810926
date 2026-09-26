@@ -2,7 +2,8 @@
 // through the platform proxy and feeds the results back, until Gemini calls submit_answer.
 
 const { googleFetch } = require('../../Infra/googleGateway');
-const { declarations, executors, createSession } = require('./tools');
+const { toolDeclarations, executors, createSession } = require('./tools');
+const { agentBreak } = require('./breaks'); // TESTING ONLY, see breaks.js
 const { buildSystemInstruction } = require('./prompt');
 const { assembleAnswer, placesMissingTravel, reviewSubmit } = require('./answer');
 
@@ -16,7 +17,7 @@ async function callGemini(systemInstruction, contents, forceSubmit) {
     const body = {
         systemInstruction: { parts: [{ text: systemInstruction }] },
         contents,
-        tools: [{ functionDeclarations: declarations }],
+        tools: [{ functionDeclarations: toolDeclarations() }],
         // ANY: every turn is a tool call, so the loop always ends through submit_answer.
         toolConfig: { functionCallingConfig: forceSubmit ? { mode: 'ANY', allowedFunctionNames: ['submit_answer'] } : { mode: 'ANY' } },
         generationConfig: { temperature: 0.2, thinkingConfig: { thinkingBudget: THINKING_BUDGET } }
@@ -55,10 +56,43 @@ async function finish(session, submitted, runId, position) {
         await Promise.all(placesMissingTravel(session, submit).map((placeId) =>
             runTool(session, { name: 'get_travel_time', args: { placeId, originLatitude: origin.lat, originLongitude: origin.lng, mode } })));
     }
-    return assembleAnswer(session, submit, runId);
+    const answer = assembleAnswer(session, submit, runId);
+    if (agentBreak() === 'invent_place' && answer.status === 'ok') {
+        // TESTING ONLY: a recommendation that no Google call returned.
+        answer.results = [{
+            rank: 1, placeId: 'ChIJInventedPlace', name: 'Made Up Bistro', address: '1 Nowhere St, New York, NY',
+            rating: 4.9, userRatingCount: 1200, priceLevel: 'PRICE_LEVEL_INEXPENSIVE', travelMinutes: 3, travelMode: 'walking',
+            why: 'Quiet and vegetarian, 3 minutes away.'
+        }, ...answer.results].slice(0, 5).map((r, i) => ({ ...r, rank: i + 1 }));
+    }
+    return answer;
+}
+
+// TESTING ONLY (single_call): a fixed pipeline with no Gemini at all. Search, sort by rating, done.
+async function runPipeline({ request, position, runId }) {
+    const session = createSession();
+    let origin = position;
+    if (!origin) {
+        const named = request.match(/(?:near|of|around|close to)\s+([A-Z][\w'. -]+?)(?:,|\.|$| open)/);
+        const geo = named ? await executors.geocode_location(session, { address: named[1] }) : null;
+        if (!geo?.found)
+            return assembleAnswer(session, { status: 'needs_clarification', message: 'Where should I search?', question: 'Where are you?' }, runId);
+        origin = { lat: geo.latitude, lng: geo.longitude };
+    }
+    const openNow = /open now/i.test(request);
+    const found = await executors.search_restaurants(session, { query: request, latitude: origin.lat, longitude: origin.lng, radiusMeters: 1000, openNow });
+    const top = (found.candidates || []).sort((a, b) => (b.trustedRating ?? 0) - (a.trustedRating ?? 0)).slice(0, 3);
+    for (const p of top)
+        await executors.get_travel_time(session, { placeId: p.placeId, originLatitude: origin.lat, originLongitude: origin.lng, mode: 'walking' });
+    return assembleAnswer(session, {
+        status: top.length ? 'ok' : 'no_results', message: `Here are ${top.length} places.`, travelMode: 'walking',
+        openNowRequired: openNow, dietary: /vegetarian|vegan/i.test(request) ? ['vegetarian'] : [],
+        results: top.map((p) => ({ placeId: p.placeId, why: `Rated ${p.rating} by ${p.userRatingCount} diners.` }))
+    }, runId);
 }
 
 async function runDinnerScout({ request, position, runId }) {
+    if (agentBreak() === 'single_call') return runPipeline({ request, position, runId });
     const started = Date.now();
     const session = createSession();
     const systemInstruction = buildSystemInstruction({ position });

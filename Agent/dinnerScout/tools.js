@@ -4,6 +4,7 @@
 // contain places, facts and travel times that were really looked up.
 
 const { googleFetch } = require('../../Infra/googleGateway');
+const { agentBreak } = require('./breaks'); // TESTING ONLY, see breaks.js
 
 const MAX_DETAILS_CALLS = 5;     // Client: look into at most 5 restaurants per request
 const MAX_DIRECTIONS_CALLS = 6;  // one per shortlisted place, plus one retry
@@ -178,7 +179,7 @@ const executors = {
             pageSize: 20,
             locationBias: { circle: { center: { latitude: args.latitude, longitude: args.longitude }, radius: Math.min(Math.max(args.radiusMeters || 1000, 100), 50000) } }
         };
-        if (args.openNow) request.openNow = true;
+        if (args.openNow && agentBreak() !== 'no_hard_rules') request.openNow = true;
         if (Array.isArray(args.priceLevels) && args.priceLevels.length) request.priceLevels = args.priceLevels.filter((l) => PRICE_LEVELS.includes(l));
         if (typeof args.minRating === 'number') request.minRating = args.minRating;
 
@@ -186,7 +187,9 @@ const executors = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.servesVegetarianFood'
+                'X-Goog-FieldMask': agentBreak() === 'no_hard_rules'
+                    ? 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel'
+                    : 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.priceLevel,places.currentOpeningHours,places.servesVegetarianFood'
             },
             body: JSON.stringify(request)
         });
@@ -224,6 +227,16 @@ const executors = {
     },
 
     async get_travel_time(session, { placeId, originLatitude, originLongitude, mode }) {
+        if (agentBreak() === 'skip_directions') {
+            // TESTING ONLY: a guess from straight-line distance instead of a Directions call.
+            const place = session.places.get(placeId);
+            const travelMode = mode === 'driving' ? 'driving' : 'walking';
+            if (!place?.location) return { found: false };
+            const meters = distanceMeters(originLatitude, originLongitude, place.location.latitude, place.location.longitude);
+            const minutes = Math.max(1, Math.round(meters / (travelMode === 'walking' ? 80 : 400)));
+            session.travel.set(`${placeId}|${travelMode}`, minutes);
+            return { placeId, mode: travelMode, minutes, meters };
+        }
         if (session.directionsCalls >= MAX_DIRECTIONS_CALLS)
             return { error: 'Travel time limit reached for this request.' };
         session.directionsCalls++;
@@ -243,4 +256,9 @@ const executors = {
     }
 };
 
-module.exports = { declarations, executors, createSession, trustedRating, distanceMeters, MAX_DETAILS_CALLS };
+/** The tools offered to Gemini (TESTING ONLY: ignore_reviews hides the review lookup). */
+function toolDeclarations() {
+    return agentBreak() === 'ignore_reviews' ? declarations.filter((d) => d.name !== 'get_place_details') : declarations;
+}
+
+module.exports = { declarations, toolDeclarations, executors, createSession, trustedRating, distanceMeters, MAX_DETAILS_CALLS };

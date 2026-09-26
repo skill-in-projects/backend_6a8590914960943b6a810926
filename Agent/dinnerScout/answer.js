@@ -6,6 +6,8 @@
 //   - travel minutes only from a Directions call in this request
 // Pure: no I/O, so it is unit-tested directly.
 
+const { agentBreak } = require('./breaks'); // TESTING ONLY, see breaks.js
+
 const STATUSES = ['ok', 'needs_clarification', 'no_results'];
 const RELAXABLE = ['distance', 'price', 'rating'];
 const MAX_RESULTS = 5;
@@ -31,6 +33,7 @@ function eligiblePlaces(session, submit) {
         seen.add(id);
         const place = session.places.get(id);
         if (!place) { dropped.push(`Dropped ${id}: not returned by Google in this request`); continue; }
+        if (agentBreak() === 'no_hard_rules') { eligible.push({ place, why: String(item.why || '').trim() }); continue; }
         if (submit.openNowRequired && place.openNow === false) { dropped.push(`Dropped ${place.name}: closed now`); continue; }
         if (needsVegetarian(submit) && place.servesVegetarianFood === false) { dropped.push(`Dropped ${place.name}: does not fit the dietary need`); continue; }
         eligible.push({ place, why: String(item.why || '').trim() });
