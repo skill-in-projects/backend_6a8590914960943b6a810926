@@ -4,6 +4,9 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const winston = require('winston');
 const testController = require('./Controllers/TestController');
+// [PLATFORM-PROXY] ADDED. StrAppers BE: app.js template in GitHubService.GenerateNodeJSBackend.
+// Gives every request a run id (X-Run-Id) that googleGateway.js forwards to the platform proxy.
+const { runContextMiddleware } = require('./Infra/runContext');
 
 // Configure logging - Warning and Error only
 const logger = winston.createLogger({
@@ -25,8 +28,11 @@ const logger = winston.createLogger({
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(cors());
+// [PLATFORM-PROXY] CHANGED: was app.use(cors()). Exposes X-Run-Id so a browser frontend can read it and open the debug trace.
+app.use(cors({ exposedHeaders: ['X-Run-Id'] }));
 app.use(express.json());
+// [PLATFORM-PROXY] ADDED: must run before every route so all Google calls in a request share one run id.
+app.use(runContextMiddleware);
 
 // Swagger configuration
 const swaggerOptions = {
@@ -61,6 +67,14 @@ const asyncHandler = (fn) => {
 // Google API proxy routes (status, gemini, geocoding, maps, directions, places, speech-to-text)
 const googleApiController = require('./Controllers/GoogleApiController');
 app.use('/api/google', googleApiController);
+
+// [PLATFORM-PROXY] ADDED: per-run trace of Google calls (proxy log in proxy mode, in-memory log in direct mode).
+const debugController = require('./Controllers/DebugController');
+app.use('/api/debug', debugController);
+
+// Dinner Scout agent (POST /api/agent/dinner)
+const agentController = require('./Controllers/AgentController');
+app.use('/api/agent', agentController);
 
 // Routes - wrap async handlers to catch errors
 app.get('/api/test', asyncHandler(testController.getAll));
