@@ -23,6 +23,16 @@ When **GOOGLE_PROXY_BASE_URL** and **GOOGLE_PROXY_TOKEN** are set, calls go thro
 
 Every request to this backend gets a run id: send your own in the **X-Run-Id** header or read the one returned in the **X-Run-Id** response header. **GET /api/debug/runs/{runId}** lists every Google call made while serving that request.
 
+## Dinner Scout agent
+
+`POST /api/agent/dinner` with `{ "request": "...", "position": { "lat": 0, "lng": 0 } }` (position optional) returns up to 5 ranked restaurant recommendations, a clarifying question, or an honest "no results", plus a step-by-step `trace`.
+
+- `Agent/dinnerScout/agent.js`: the loop. Gemini (function calling) decides every lookup; the code runs it through `googleFetch` and feeds the result back until Gemini calls `submit_answer`. After 13 seconds, or on the 8th turn, Gemini may only submit.
+- `Agent/dinnerScout/tools.js`: the tools (geocode, search, details, travel time, submit) and the per-request session of what Google returned.
+- `Agent/dinnerScout/answer.js`: the final answer. Only places Google returned in this request, facts copied from Google, no closed place when "open now" was asked, dietary needs never relaxed, travel minutes only from Directions.
+- `Agent/dinnerScout/prompt.js`: the rules from the client, as the agent's system instruction.
+- `AGENT_THINKING_BUDGET` (optional, default 0): Gemini thinking tokens per turn.
+
 ## Recommended Tools
 
 **Recommended SQL Editor tool (Free):** [pgAdmin](https://www.pgadmin.org/download/)

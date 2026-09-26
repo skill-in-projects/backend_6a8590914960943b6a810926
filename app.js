@@ -72,6 +72,10 @@ app.use('/api/google', googleApiController);
 const debugController = require('./Controllers/DebugController');
 app.use('/api/debug', debugController);
 
+// Dinner Scout agent (POST /api/agent/dinner)
+const agentController = require('./Controllers/AgentController');
+app.use('/api/agent', agentController);
+
 // Routes - wrap async handlers to catch errors
 app.get('/api/test', asyncHandler(testController.getAll));
 app.get('/api/test/:id', asyncHandler(testController.getById));
