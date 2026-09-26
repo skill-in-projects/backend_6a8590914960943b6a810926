@@ -124,6 +124,8 @@ function createSession() {
         origin: null,        // {lat, lng}: the guest position, else the last geocoded place
         places: new Map(),   // placeId -> facts from Places (search and details), exactly as Google returned them
         travel: new Map(),   // `${placeId}|${mode}` -> minutes from Directions
+        searchRadii: [],     // radius of every successful search, to know whether distance was ever relaxed
+        nudges: new Set(),   // submit_answer corrections already sent (each at most once)
         detailsCalls: 0,
         directionsCalls: 0,
         trace: []
@@ -190,6 +192,7 @@ const executors = {
         });
         const body = await readJson(res, 'Places search');
         if (body?.error) return body;
+        session.searchRadii.push(request.locationBias.circle.radius);
         const candidates = (body?.places || []).map((p) => {
             const place = rememberPlace(session, p);
             const meters = place.location ? distanceMeters(args.latitude, args.longitude, place.location.latitude, place.location.longitude) : null;

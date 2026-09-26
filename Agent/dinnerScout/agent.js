@@ -4,7 +4,7 @@
 const { googleFetch } = require('../../Infra/googleGateway');
 const { declarations, executors, createSession } = require('./tools');
 const { buildSystemInstruction } = require('./prompt');
-const { assembleAnswer, placesMissingTravel } = require('./answer');
+const { assembleAnswer, placesMissingTravel, reviewSubmit } = require('./answer');
 
 const MODEL_PATH = '/v1beta/models/gemini-2.5-flash:generateContent';
 const MAX_TURNS = 8;
@@ -68,14 +68,22 @@ async function runDinnerScout({ request, position, runId }) {
 
         const calls = content.parts.filter((p) => p.functionCall).map((p) => p.functionCall);
         const submit = calls.find((c) => c.name === 'submit_answer');
-        if (submit) return finish(session, submit.args || {}, runId, position);
+        let correction = null;
+        if (submit) {
+            correction = forceSubmit ? null : reviewSubmit(session, submit.args || {});
+            if (!correction) return finish(session, submit.args || {}, runId, position);
+            session.trace.push(`Asked the model to revise its answer: ${correction.split('.')[0]}`);
+        }
         if (calls.length === 0) {
             contents.push({ role: 'user', parts: [{ text: 'Use the tools, and finish with submit_answer.' }] });
             continue;
         }
 
         const responses = await Promise.all(calls.map(async (call) => ({
-            functionResponse: { name: call.name, response: await runTool(session, call) }
+            functionResponse: {
+                name: call.name,
+                response: call.name === 'submit_answer' ? { error: correction } : await runTool(session, call)
+            }
         })));
         contents.push({ role: 'user', parts: responses });
     }

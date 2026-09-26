@@ -129,6 +129,8 @@ describe('agent loop', () => {
     test('with a known position it never geocodes, and looks up travel times the model skipped', async () => {
         const gemini = [
             modelTurn({ name: 'search_restaurants', args: { query: 'vegetarian', latitude: 1, longitude: 2, radiusMeters: 1000 } }),
+            modelTurn({ name: 'submit_answer', args: { status: 'ok', message: 'One pick.', results: [{ placeId: 'green', why: 'Calm.' }] } }),
+            // bounced once for listing fewer than 3; resubmits unchanged because nothing else qualifies
             modelTurn({ name: 'submit_answer', args: { status: 'ok', message: 'One pick.', results: [{ placeId: 'green', why: 'Calm.' }] } })
         ];
         googleFetch.mockImplementation(async (service, path) => {
@@ -165,5 +167,61 @@ describe('search price filter', () => {
             priceLevels: ['PRICE_LEVEL_FREE', 'PRICE_LEVEL_INEXPENSIVE']
         });
         expect(JSON.parse(googleFetch.mock.calls[0][2].body).priceLevels).toEqual(['PRICE_LEVEL_INEXPENSIVE']);
+    });
+});
+
+describe('submit corrections', () => {
+    const { reviewSubmit } = require('../Agent/dinnerScout/answer');
+    const ok = (body) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
+    const modelTurn = (...calls) => ok({ candidates: [{ content: { role: 'model', parts: calls.map((c) => ({ functionCall: c })) } }] });
+    beforeEach(() => googleFetch.mockReset());
+
+    test('no_results without a wider search is bounced once, then accepted', () => {
+        const session = createSession();
+        session.searchRadii.push(400);
+        expect(reviewSubmit(session, { status: 'no_results' })).toMatch(/relax distance/);
+        expect(reviewSubmit(session, { status: 'no_results' })).toBeNull();
+    });
+
+    test('no_results after a doubled radius is accepted', () => {
+        const session = createSession();
+        session.searchRadii.push(400, 2000);
+        expect(reviewSubmit(session, { status: 'no_results' })).toBeNull();
+    });
+
+    test('fewer than 3 places is bounced once, then accepted', () => {
+        const session = createSession();
+        const two = { status: 'ok', results: [{ placeId: 'a' }, { placeId: 'b' }] };
+        expect(reviewSubmit(session, two)).toMatch(/3 to 5/);
+        expect(reviewSubmit(session, two)).toBeNull();
+        expect(reviewSubmit(createSession(), { status: 'ok', results: [{}, {}, {}] })).toBeNull();
+    });
+
+    test('the loop relaxes distance after a premature no_results', async () => {
+        const gemini = [
+            modelTurn({ name: 'search_restaurants', args: { query: 'ethiopian', latitude: 1, longitude: 2, radiusMeters: 400, openNow: true } }),
+            modelTurn({ name: 'submit_answer', args: { status: 'no_results', message: 'Nothing Ethiopian nearby.' } }),
+            modelTurn({ name: 'search_restaurants', args: { query: 'ethiopian', latitude: 1, longitude: 2, radiusMeters: 2000, openNow: true } }),
+            modelTurn({ name: 'submit_answer', args: { status: 'ok', message: 'Nothing within 5 minutes, so this is 20 minutes away.',
+                relaxed: [{ constraint: 'distance', from: '5 min walk', to: '20 min walk' }], results: [{ placeId: 'nile', why: 'The Ethiopian option.' }] } }),
+            modelTurn({ name: 'submit_answer', args: { status: 'ok', message: 'Only one Ethiopian place.',
+                relaxed: [{ constraint: 'distance', from: '5 min walk', to: '20 min walk' }], results: [{ placeId: 'nile', why: 'The Ethiopian option.' }] } })
+        ];
+        googleFetch.mockImplementation(async (service, path, init) => {
+            if (service === 'gemini') return gemini.shift();
+            if (path === '/v1/places:searchText') {
+                const radius = JSON.parse(init.body).locationBias.circle.radius;
+                return ok({ places: radius >= 2000 ? [{ id: 'nile', displayName: { text: 'Blue Nile Table' }, currentOpeningHours: { openNow: true } }] : [] });
+            }
+            if (path.startsWith('/maps/api/directions')) return ok({ status: 'OK', routes: [{ legs: [{ duration: { value: 1200 }, distance: { value: 1600 } }] }] });
+            throw new Error('unexpected call ' + service + path);
+        });
+
+        const answer = await runDinnerScout({ request: 'Ethiopian within 5 minutes walk', position: { lat: 1, lng: 2 }, runId: 'r' });
+
+        expect(answer.status).toBe('ok');
+        expect(answer.relaxed).toEqual([{ constraint: 'distance', from: '5 min walk', to: '20 min walk' }]);
+        expect(answer.results).toEqual([expect.objectContaining({ placeId: 'nile', travelMinutes: 20 })]);
+        expect(answer.trace.join('\n')).toMatch(/Asked the model to revise/);
     });
 });
