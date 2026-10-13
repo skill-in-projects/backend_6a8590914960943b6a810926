@@ -41,3 +41,7 @@ Every request to this backend gets a run id: send your own in the **X-Run-Id** h
 ## Deployment
 
 This backend is configured for Railway deployment using nixpacks.toml.
+
+## Sprint 3
+
+Work for sprint 3 happens on branch `3-B-1`.
